@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/normal"
+        android:title="普通加载" />
+    <item
+        android:id="@+id/image_transform"
+        android:title="图片变换" />
+    <item
+        android:id="@+id/image_target"
+        android:title="指定目标" />
+</menu>
