@@ -43,6 +43,6 @@ dependencies {
         transitive = false
     }
 
-    implementation 'com.github.WenWangAndroid:LoopBanner:1.0'
+//    implementation 'com.github.WenWangAndroid:LoopBanner:1.0'
     implementation 'androidx.recyclerview:recyclerview:1.0.0'
 }

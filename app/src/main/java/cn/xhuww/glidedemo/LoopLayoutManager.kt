@@ -3,140 +3,151 @@ package cn.xhuww.glidedemo
 import android.graphics.PointF
 import android.view.View
 import android.view.ViewGroup
+import androidx.recyclerview.widget.OrientationHelper
 import androidx.recyclerview.widget.RecyclerView
 
 class LoopLayoutManager : RecyclerView.LayoutManager(),
-    RecyclerView.SmoothScroller.ScrollVectorProvider {
+	RecyclerView.SmoothScroller.ScrollVectorProvider {
 
-    override fun computeScrollVectorForPosition(targetPosition: Int): PointF? {
-        if (childCount == 0) {
-            return null
-        }
-        val firstChildPos = getPosition(getChildAt(0)!!)
-        val direction = if (targetPosition < firstChildPos) -1 else 1
-        return PointF(direction.toFloat(), 0f)
-    }
+	private val orientationHelper = OrientationHelper.createHorizontalHelper(this)
 
-    override fun generateDefaultLayoutParams(): RecyclerView.LayoutParams {
-        return RecyclerView.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
+	override fun computeScrollVectorForPosition(targetPosition: Int): PointF? {
+		if (childCount == 0) {
+			return null
+		}
+		val firstChildPos = getPosition(getChildAt(0)!!)
+		val direction = if (targetPosition < firstChildPos) -1 else 1
+		return PointF(direction.toFloat(), 0f)
+	}
 
-    override fun onLayoutChildren(recycler: RecyclerView.Recycler, state: RecyclerView.State) {
-        //分离并且回收当前附加的所有View
-        detachAndScrapAttachedViews(recycler)
+	override fun generateDefaultLayoutParams(): RecyclerView.LayoutParams =
+		RecyclerView.LayoutParams(
+			ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+		)
 
-        if (itemCount == 0) {
-            return
-        }
-        //横向绘制子View,则需要知道 X轴的偏移量
-        var offsetX = 0
+	override fun onLayoutChildren(recycler: RecyclerView.Recycler, state: RecyclerView.State) {
+		//分离并且回收当前附加的所有View
+		detachAndScrapAttachedViews(recycler)
 
-        //绘制并添加view
-        for (i in 0 until itemCount) {
-            val view = recycler.getViewForPosition(i)
-            addView(view)
+		if (itemCount == 0) return
 
-            measureChildWithMargins(view, 0, 0)
-            val viewWidth = getDecoratedMeasuredWidth(view)
-            val viewHeight = getDecoratedMeasuredHeight(view)
-            layoutDecorated(view, offsetX, 0, offsetX + viewWidth, viewHeight)
-            offsetX += viewWidth
+		var start = orientationHelper.startAfterPadding
 
-            if (offsetX > width) {
-                break
-            }
-        }
-    }
+		//初始化时则需要左右都预先加载，避免滑动初次右滑时出现空白
+		val lastView = recycler.getViewForPosition(itemCount - 1)
+		layoutChild(lastView, start, forward = false)
 
-    //是否可横向滑动
-    override fun canScrollHorizontally(): Boolean {
-        return true
-    }
+		for (i in 0 until itemCount) {
+			val child = recycler.getViewForPosition(i)
+			layoutChild(child, start, forward = true)
+			start = orientationHelper.getDecoratedEnd(child)
+			if (start > orientationHelper.endAfterPadding) break
+		}
+		orientationHelper.onLayoutComplete()
+	}
 
-    override fun scrollHorizontallyBy(
-        dx: Int, recycler: RecyclerView.Recycler, state: RecyclerView.State
-    ): Int {
-        recycleViews(dx, recycler)
-        fill(dx, recycler)
-        offsetChildrenHorizontal(dx * -1)
-        return dx
-    }
+	/**
+	 * 横向滑动时的回调方法，对应还有竖向滑动的回调放
+	 * @see scrollVerticallyBy
+	 */
+	override fun scrollHorizontallyBy(
+		dx: Int, recycler: RecyclerView.Recycler, state: RecyclerView.State
+	): Int {
+		if (childCount == 0 || dx == 0) return 0
+		recycleViews(dx, recycler)
+		fill(dx, recycler)
+		offsetChildrenHorizontal(dx * -1)
+		return dx
+	}
 
-    private fun fill(dx: Int, recycler: RecyclerView.Recycler) {
-        //左滑
-        if (dx > 0) {
+	/**
+	 * 如果不重此方法，或者返回 false，则需要重写onMeasure方法
+	 * 否则 RecyclerView 高度不确定时，无法展示出子View
+	 */
+	override fun isAutoMeasureEnabled(): Boolean = true
 
-            while (true) {
-                //得到当前已添加（可见）的最后一个子View
-                val lastVisibleView = getChildAt(childCount - 1) ?: break
+	/**
+	 * 是否允许横向滑动，默认禁止，返回true 代表允许，对应还有是否允许竖向滑动
+	 * @see canScrollVertically
+	 */
+	override fun canScrollHorizontally(): Boolean = true
 
-                //如果滑动过后，View还是未完全显示出来就 不进行绘制下一个View
-                if (lastVisibleView.right - dx > width)
-                    break
+	private fun fill(dx: Int, recycler: RecyclerView.Recycler) {
+		while (true) {
+			val start: Int
+			val nextView: View
+			val forward = dx > 0
 
-                //得到View对应的位置
-                val layoutPosition = getPosition(lastVisibleView)
-                /**
-                 * 例如要显示20个View，当前可见的最后一个View就是第20个，那么下一个要显示的就是第一个
-                 * 如果当前显示的View不是第20个，那么就显示下一个，如当前显示的是第15个View，那么下一个显示第16个
-                 * 注意区分 childCount 与 itemCount
-                 */
-                val nextView: View = if (layoutPosition == itemCount - 1) {
-                    recycler.getViewForPosition(0)
-                } else {
-                    recycler.getViewForPosition(layoutPosition + 1)
-                }
+			if (forward) {
+				val lastVisibleView = getChildAt(childCount - 1) ?: break
+				start = orientationHelper.getDecoratedEnd(lastVisibleView)
+				if (lastVisibleView.right - dx > orientationHelper.endAfterPadding) break
 
-                addView(nextView)
-                measureChildWithMargins(nextView, 0, 0)
-                val viewWidth = getDecoratedMeasuredWidth(nextView)
-                val viewHeight = getDecoratedMeasuredHeight(nextView)
-                val offsetX = lastVisibleView.right
-                layoutDecorated(nextView, offsetX, 0, offsetX + viewWidth, viewHeight)
-            }
-        } else { //右滑
-            while (true) {
-                val firstVisibleView = getChildAt(0) ?: break
+				val lastViewPosition = getPosition(lastVisibleView)
+				nextView = if (lastViewPosition == itemCount - 1) {
+					recycler.getViewForPosition(0)
+				} else {
+					recycler.getViewForPosition(lastViewPosition + 1)
+				}
+			} else {
+				val firstVisibleView = getChildAt(0) ?: break
+				start = orientationHelper.getDecoratedStart(firstVisibleView)
+				if (start - dx < orientationHelper.startAfterPadding) break
 
-                if (firstVisibleView.left - dx < 0) break
+				val firstViewPosition = getPosition(firstVisibleView)
+				nextView = if (firstViewPosition == 0) {
+					recycler.getViewForPosition(itemCount - 1)
+				} else {
+					recycler.getViewForPosition(firstViewPosition - 1)
+				}
+			}
+			layoutChild(nextView, start, forward)
+		}
+	}
 
-                val layoutPosition = getPosition(firstVisibleView)
-                /**
-                 * 如果当前第一个可见View为第0个，则左侧显示第20个View 如果不是，下一个就显示前一个
-                 */
-                val nextView = if (layoutPosition == 0) {
-                    recycler.getViewForPosition(itemCount - 1)
-                } else {
-                    recycler.getViewForPosition(layoutPosition - 1)
-                }
+	/**
+	 * @param view
+	 * @param start view的绘制起始点
+	 * @param forward 绘制方向是否向前(从左至右)
+	 */
+	private fun layoutChild(view: View, start: Int, forward: Boolean) {
+		measureChildWithMargins(view, 0, 0)
+		val childWidth = orientationHelper.getDecoratedMeasurement(view)
+		val childHeight = orientationHelper.getDecoratedMeasurementInOther(view)
 
-                addView(nextView, 0)
-                measureChildWithMargins(nextView, 0, 0)
-                val viewWidth = getDecoratedMeasuredWidth(nextView)
-                val viewHeight = getDecoratedMeasuredHeight(nextView)
-                val offsetX = firstVisibleView.left
-                layoutDecorated(nextView, offsetX - viewWidth, 0, offsetX, viewHeight)
-            }
-        }
-    }
+		val left: Int
+		val right: Int
+		val top = paddingTop
+		val bottom = top + childHeight
 
-    private fun recycleViews(dx: Int, recycler: RecyclerView.Recycler) {
-        for (i in 0 until itemCount) {
-            val childView = getChildAt(i) ?: return
-            //左滑
-            if (dx > 0) {
-                //移除并回收 原点 左侧的子View
-                if (childView.right - dx < 0) {
-                    removeAndRecycleViewAt(i, recycler)
-                }
-            } else { //右滑
-                //移除并回收 右侧即RecyclerView宽度之以外的子View
-                if (childView.left - dx > width) {
-                    removeAndRecycleViewAt(i, recycler)
-                }
-            }
-        }
-    }
+		if (forward) {
+			addView(view)
+			left = start
+			right = start + childWidth
+		} else {
+			addView(view, 0)
+			left = start - childWidth
+			right = start
+		}
+		layoutDecoratedWithMargins(view, left, top, right, bottom)
+	}
+
+	private fun recycleViews(dx: Int, recycler: RecyclerView.Recycler) {
+		for (i in 0 until itemCount) {
+			val childView = getChildAt(i) ?: return
+			if (dx > 0) {
+				if (orientationHelper.getDecoratedEnd(childView) - dx <
+					orientationHelper.startAfterPadding
+				) {
+					removeAndRecycleViewAt(i, recycler)
+				}
+			} else {
+				if (orientationHelper.getDecoratedStart(childView) - dx >
+					orientationHelper.endAfterPadding
+				) {
+					removeAndRecycleViewAt(i, recycler)
+				}
+			}
+		}
+	}
 }

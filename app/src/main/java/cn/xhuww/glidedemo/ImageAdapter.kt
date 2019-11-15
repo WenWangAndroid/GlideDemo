@@ -1,5 +1,6 @@
 package cn.xhuww.glidedemo
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +25,7 @@ class ImageAdapter : RecyclerView.Adapter<ImageAdapter.ViewHolder>() {
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         holder.bindView(items[position])
+        Log.i("TAG","------onBindViewHolder  $position")
     }
 
     inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
